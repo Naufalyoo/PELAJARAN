@@ -94,3 +94,144 @@ echo "nameserver 192.168.<bebas>.1" | sudo tee /etc/resolv.conf
 
 5. Detik.com masih bisa → flush DNS cache client:
    sudo systemd-resolve --flush-caches
+
+Oke, kita bikin versi **pakai IP 192.168.16.0/24** ya.
+Aku sesuaikan semua konfigurasi MikroTik, VPCS, dan Kali Linux.
+
+
+
+# 🌐 Topologi
+
+
+[ Cloud (NIC Laptop / NAT GNS3) ]
+             |
+         [ Switch1 ]
+             |
+         [ MikroTik ]
+        ether1 |  ether2 (LAN)
+               |
+           [ Switch2 ]
+           /        \
+      [ VPCS ]   [ Kali Linux (VirtualBox) ]
+```
+
+---
+
+# ⚙️ Konfigurasi MikroTik
+
+Reset dulu:
+
+```bash
+/system reset-configuration no-defaults=yes skip-backup=yes
+```
+
+# IP LAN (ether2)
+
+```bash
+/ip address add address=192.168.16.1/24 interface=ether2
+```
+
+# DHCP Server untuk LAN
+
+```bash
+/ip pool add name=dhcp_pool ranges=192.168.16.10-192.168.16.100
+/ip dhcp-server add name=dhcp_srv interface=ether2 address-pool=dhcp_pool disabled=no
+/ip dhcp-server network add address=192.168.16.0/24 gateway=192.168.16.1 dns-server=192.168.16.1
+```
+
+# WAN (ether1) → DHCP client
+
+```bash
+/ip dhcp-client add interface=ether1 disabled=no
+```
+
+# NAT masquerade
+
+```bash
+/ip firewall nat add chain=srcnat out-interface=ether1 action=masquerade
+```
+
+---
+
+# 🔐 Firewall
+
+```bash
+/ip firewall filter add chain=input connection-state=invalid action=drop comment="Drop invalid"
+/ip firewall filter add chain=input in-interface=ether2 action=accept comment="Allow LAN"
+/ip firewall filter add chain=input connection-state=established,related action=accept comment="Allow established"
+/ip firewall filter add chain=input action=drop comment="Drop all others"
+```
+
+---
+
+# 🚫 Blokir detik.com
+
+```bash
+/ip dns set servers=8.8.8.8 allow-remote-requests=yes
+/ip dns static add name=detik.com address=127.0.0.1
+/ip dns static add name=www.detik.com address=127.0.0.1
+```
+
+---
+
+# 💻 VPCS
+
+```bash
+ip dhcp
+ping 192.168.16.1
+ping 8.8.8.8
+ping google.com   # harus sukses
+ping detik.com    # harus gagal
+```
+
+---
+
+# 🐧 Kali Linux
+
+DHCP:
+
+```bash
+sudo dhclient eth0
+```
+
+Kalau DHCP gagal → manual:
+
+```bash
+sudo ip addr add 192.168.16.20/24 dev eth0
+sudo ip route add default via 192.168.16.1
+echo "nameserver 192.168.16.1" | sudo tee /etc/resolv.conf
+```
+
+---
+
+# 🛠️ Troubleshooting
+
+1. **Cek interface & IP**
+
+   ```bash
+   ip addr show
+   ```
+
+2. **Flush IP dobel**
+
+   ```bash
+   sudo ip addr flush dev eth0
+   ```
+
+3. **Perbaiki route default**
+
+   ```bash
+   sudo ip route add default via 192.168.16.1
+   ```
+
+4. **DNS error (ping IP bisa, ping domain gagal)**
+
+   ```bash
+   echo "nameserver 192.168.16.1" | sudo tee /etc/resolv.conf
+   ```
+
+5. **Kalau detik.com masih bisa → flush DNS cache client**
+
+   ```bash
+   sudo systemd-resolve --flush-caches
+   ```
