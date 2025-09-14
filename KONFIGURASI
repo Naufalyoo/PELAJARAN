@@ -137,7 +137,7 @@ Reset dulu:
 # NAT masquerade
 
 /ip firewall nat add chain=srcnat out-interface=ether1 action=masquerade
-
+/ip dns set servers=8.8.8.8,8.8.4.4 allow-remote-requests=yes
 
 # 🔐 Firewall
 
